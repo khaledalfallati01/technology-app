@@ -1,51 +1,71 @@
-<script>
-    const API = "https://technology-app.onrender.com";
-    const KEY = "KA12345KA";
-    let allCh = [];
+const express = require('express');
+const cors = require('cors');
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-    // --- ضع الدوال الجديدة هنا ---
+const ADMIN_KEY = 'KA12345KA'; 
+let channels = []; 
+let pendingRequests = []; 
 
-    async function verifyAdmin() {
-        const passInput = document.getElementById('admPass');
-        
-        if(passInput.value === KEY) {
-            document.getElementById('authBox').style.display = 'none';
-            document.getElementById('adminContent').style.display = 'block';
-            await loadPending(); 
-        } else {
-            alert("❌ رمز الدخول غير صحيح");
+// جلب القنوات المعتمدة
+app.get('/channels', (req, res) => res.json(channels));
+
+// جلب الطلبات المعلقة (للأدمن فقط)
+app.get('/pending', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) res.json(pendingRequests);
+    else res.status(401).send('Unauthorized');
+});
+
+// مستخدم يرسل طلب إضافة
+app.post('/request-channel', (req, res) => {
+    const { name, link, desc } = req.body;
+    pendingRequests.push({ id: Date.now(), name, link, desc });
+    res.status(200).json({ message: 'Sent' });
+});
+
+// أدمن يضيف قناة مباشرة
+app.post('/add-channel', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const { name, link, desc } = req.body;
+        channels.push({ id: Date.now(), name, link, desc });
+        return res.status(200).json({ message: 'Added' });
+    }
+    res.status(401).send('Unauthorized');
+});
+
+// أدمن يوافق على طلب معلق
+app.post('/approve-channel/:id', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const id = parseInt(req.params.id);
+        const reqIndex = pendingRequests.findIndex(r => r.id === id);
+        if (reqIndex > -1) {
+            channels.push(pendingRequests[reqIndex]);
+            pendingRequests.splice(reqIndex, 1);
+            return res.status(200).json({ message: 'Approved' });
         }
     }
+    res.status(401).send('Unauthorized');
+});
 
-    async function loadPending() {
-        const list = document.getElementById('pendingList');
-        list.innerHTML = `<div style="text-align:center; padding:10px;">⚡ جاري جلب الطلبات بسرعة...</div>`;
-        
-        try {
-            const res = await fetch(`${API}/pending`, { 
-                headers: {'x-admin-key': KEY} 
-            });
-            
-            if (!res.ok) throw new Error();
-            
-            const data = await res.json();
-            list.innerHTML = data.length ? "" : "<p style='text-align:center; color:#6b7280;'>لا توجد طلبات جديدة حالياً.</p>";
-            
-            data.forEach(p => {
-                list.innerHTML += `
-                    <div class="pending-card" id="req-${p.id}">
-                        <strong>${p.name}</strong>
-                        <p style="font-size:12px; margin:5px 0; color:#4b5563;">${p.desc}</p>
-                        <div class="admin-actions">
-                            <button class="approve" onclick="action('approve', ${p.id})">✅ قبول</button>
-                            <button class="reject" onclick="action('reject', ${p.id})">❌ رفض</button>
-                        </div>
-                    </div>`;
-            });
-        } catch (e) {
-            list.innerHTML = "<p style='color:red; text-align:center;'>📡 حدث خطأ أثناء الاتصال بالسيرفر</p>";
-        }
+// أدمن يرفض طلب أو يحذف قناة
+app.delete('/reject-channel/:id', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const id = parseInt(req.params.id);
+        pendingRequests = pendingRequests.filter(r => r.id !== id);
+        return res.status(200).json({ message: 'Rejected' });
     }
+    res.status(401).send('Unauthorized');
+});
 
-    // --- باقي الدوال مثل action و draw ... ---
-</script>
+app.delete('/delete-channel/:id', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const id = parseInt(req.params.id);
+        channels = channels.filter(ch => ch.id !== id);
+        return res.status(200).json({ message: 'Deleted' });
+    }
+    res.status(401).send('Unauthorized');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log('TechHub Expert Server Running'));
