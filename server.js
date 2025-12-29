@@ -1,31 +1,59 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
-// كلمة المرور التي طلبتها
 const ADMIN_KEY = 'KA12345KA'; 
-
 let channels = []; 
+let pendingRequests = []; // مخزن الطلبات الجديدة
 
-app.get('/channels', (req, res) => {
-    res.json(channels);
+app.get('/channels', (req, res) => res.json(channels));
+app.get('/pending', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) res.json(pendingRequests);
+    else res.status(401).send('Unauthorized');
 });
 
-app.post('/add-channel', (req, res) => {
-    const userKey = req.headers['x-admin-key'];
-    if (userKey !== ADMIN_KEY) {
-        return res.status(401).json({ error: 'كلمة مرور خاطئة' });
+// المستخدم يرسل طلب إضافة
+app.post('/request-channel', (req, res) => {
+    const { name, link, desc } = req.body;
+    pendingRequests.push({ id: Date.now(), name, link, desc });
+    res.status(200).json({ message: 'Sent' });
+});
+
+// الأدمن يوافق على الطلب
+app.post('/approve-channel/:id', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const id = parseInt(req.params.id);
+        const reqIndex = pendingRequests.findIndex(r => r.id === id);
+        if (reqIndex > -1) {
+            channels.push(pendingRequests[reqIndex]);
+            pendingRequests.splice(reqIndex, 1);
+            return res.status(200).json({ message: 'Approved' });
+        }
     }
-    const { name, link } = req.body;
-    if (name && link) {
-        channels.push({ name, link });
-        return res.status(200).json({ message: 'تمت الإضافة بنجاح' });
+    res.status(401).send('Unauthorized');
+});
+
+// الأدمن يرفض الطلب
+app.delete('/reject-channel/:id', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const id = parseInt(req.params.id);
+        pendingRequests = pendingRequests.filter(r => r.id !== id);
+        return res.status(200).json({ message: 'Rejected' });
     }
-    res.status(400).json({ error: 'بيانات ناقصة' });
+    res.status(401).send('Unauthorized');
+});
+
+// حذف قناة موجودة
+app.delete('/delete-channel/:id', (req, res) => {
+    if (req.headers['x-admin-key'] === ADMIN_KEY) {
+        const id = parseInt(req.params.id);
+        channels = channels.filter(ch => ch.id !== id);
+        return res.status(200).json({ message: 'Deleted' });
+    }
+    res.status(401).send('Unauthorized');
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server Ready`));
+app.listen(PORT, () => console.log('Expert Server V2 Running'));
