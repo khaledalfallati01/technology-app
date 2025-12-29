@@ -1,30 +1,51 @@
 const express = require('express');
 const cors = require('cors');
+const https = require('https'); // استخدام المكتبة الأساسية لضمان التوافق
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const ADMIN_KEY = 'KA12345KA'; 
+const TELEGRAM_TOKEN = '8253232251:AAG1N5GDuPnShhxsJNQi9Lzhgbq7GDMd0Kc';
+const CHAT_ID = '8253232251';
+
 let channels = []; 
 let pendingRequests = []; 
+
+// دالة إرسال التنبيه إلى تليجرام باستخدام مكتبة https الأساسية
+function sendTelegramAlert(channelName) {
+    const message = encodeURIComponent(`🔔 تنبيه من TechHub:\nهناك قناة جديدة تنتظر مراجعتك:\nاسم القناة: ${channelName}`);
+    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${message}`;
+
+    https.get(url, (res) => {
+        console.log('Telegram Status:', res.statusCode);
+    }).on('error', (e) => {
+        console.error('Telegram Error:', e);
+    });
+}
 
 // جلب القنوات المعتمدة
 app.get('/channels', (req, res) => res.json(channels));
 
-// جلب الطلبات المعلقة (للأدمن فقط)
+// جلب الطلبات المعلقة للأدمن
 app.get('/pending', (req, res) => {
     if (req.headers['x-admin-key'] === ADMIN_KEY) res.json(pendingRequests);
     else res.status(401).send('Unauthorized');
 });
 
-// مستخدم يرسل طلب إضافة
+// استقبال طلب المستخدم وإرسال إشعار تليجرام
 app.post('/request-channel', (req, res) => {
     const { name, link, desc } = req.body;
-    pendingRequests.push({ id: Date.now(), name, link, desc });
+    const newRequest = { id: Date.now(), name, link, desc };
+    pendingRequests.push(newRequest);
+    
+    // إرسال الإشعار
+    sendTelegramAlert(name);
+    
     res.status(200).json({ message: 'Sent' });
 });
 
-// أدمن يضيف قناة مباشرة
+// إضافة قناة مباشرة من الأدمن
 app.post('/add-channel', (req, res) => {
     if (req.headers['x-admin-key'] === ADMIN_KEY) {
         const { name, link, desc } = req.body;
@@ -34,7 +55,7 @@ app.post('/add-channel', (req, res) => {
     res.status(401).send('Unauthorized');
 });
 
-// أدمن يوافق على طلب معلق
+// الموافقة والرفض والحذف
 app.post('/approve-channel/:id', (req, res) => {
     if (req.headers['x-admin-key'] === ADMIN_KEY) {
         const id = parseInt(req.params.id);
@@ -48,7 +69,6 @@ app.post('/approve-channel/:id', (req, res) => {
     res.status(401).send('Unauthorized');
 });
 
-// أدمن يرفض طلب أو يحذف قناة
 app.delete('/reject-channel/:id', (req, res) => {
     if (req.headers['x-admin-key'] === ADMIN_KEY) {
         const id = parseInt(req.params.id);
@@ -68,4 +88,4 @@ app.delete('/delete-channel/:id', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('TechHub Expert Server Running'));
+app.listen(PORT, () => console.log('Expert Server Running with Telegram Fix'));
